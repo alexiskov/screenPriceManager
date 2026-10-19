@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"priceManager/database"
 	"strconv"
 	"strings"
 )
@@ -16,11 +17,15 @@ import (
 // регистрация маршрутов группы protect
 func (srv *ServerHTTP) registerProtectedAdminRoutes() {
 	protectedAdmRoutes := http.NewServeMux()
-
+	//admin workspace
 	protectedAdmRoutes.HandleFunc("/adm/ws", showAdminWorkspace)
-
+	//rooms
+	protectedAdmRoutes.HandleFunc("POST /adm/api/rooms", srv.addRoom)
+	protectedAdmRoutes.HandleFunc("PATCH /adm/api/rooms/{id}", srv.renameRoom)
+	protectedAdmRoutes.HandleFunc("DELETE /adm/api/rooms/{id}", srv.deleteRoom)
+	//slots
 	protectedAdmRoutes.HandleFunc("POST /adm/api/slots/{id}/image", srv.uploadImage)
-
+	//start protected handler
 	srv.mux.Handle("/adm/", mv(protectedAdmRoutes))
 }
 
@@ -119,4 +124,84 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Printf("%+v\n", slot)
+}
+
+// добавляет комнату на сервер
+func (srv *ServerHTTP) addRoom(w http.ResponseWriter, r *http.Request) {
+	newRoom := Room{}
+	if err := json.NewDecoder(r.Body).Decode(&newRoom); err != nil {
+		log.Println(err)
+		http.Error(w, "room appending error", http.StatusInternalServerError)
+		return
+	}
+
+	dataRoom := database.Room{Title: newRoom.Title}
+
+	if err := srv.dbConn.Rooms().Add(context.Background(), &dataRoom); err != nil {
+		log.Println(err)
+		http.Error(w, "room creating error", http.StatusInternalServerError)
+		return
+	}
+
+	newRoom.Id = uint64(dataRoom.ID)
+	newRoom.Title = dataRoom.Title
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(newRoom); err != nil {
+		log.Println(err)
+		http.Error(w, "new room data response sent error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// обновляет название комнаты на сервере
+func (srv *ServerHTTP) renameRoom(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "target room id parsing error", http.StatusInternalServerError)
+		return
+	}
+
+	room := database.Room{}
+
+	if err := json.NewDecoder(r.Body).Decode(&room); err != nil {
+		log.Println(err)
+		http.Error(w, "room title parsing error", http.StatusInternalServerError)
+		return
+	}
+
+	room.ID = uint(id)
+
+	if err := srv.dbConn.Rooms().Rename(context.Background(), &room); err != nil {
+		log.Println(err)
+		http.Error(w, "room updating error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(Room{Id: uint64(room.ID), Title: room.Title}); err != nil {
+		log.Println(err)
+		http.Error(w, "room data encoding error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// удаляет комнату из базы данных
+func (srv *ServerHTTP) deleteRoom(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "id parsing error", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := srv.dbConn.Rooms().Delete(context.Background(), uint(id)); err != nil {
+		log.Println(err)
+		http.Error(w, "room deleting error", http.StatusInternalServerError)
+		return
+	}
+
+	///тут надо удалять еще и слоты + картинки
+
 }

@@ -12,12 +12,13 @@ import (
 
 func (srv *ServerHTTP) registerPublicRoutes() {
 	srv.mux.HandleFunc(" /", mainPage)
-	srv.mux.HandleFunc("GET /api/rooms", listRooms)
-	srv.mux.HandleFunc("GET /api/rooms/{id}", getRoom)
 	srv.mux.HandleFunc(" /auth", authentificationPage)
+	srv.mux.HandleFunc("GET /api/rooms", srv.getRoomsList)
+	srv.mux.HandleFunc("GET /api/rooms/{id}", getRoomData)
 	srv.mux.HandleFunc("POST /auth/check", srv.setAuth)
 }
 
+// отдает главную страницу
 func mainPage(w http.ResponseWriter, r *http.Request) {
 	data, err := os.ReadFile("./http/public/main.html")
 	if err != nil {
@@ -29,18 +30,33 @@ func mainPage(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// отдает список комнат json
-func listRooms(w http.ResponseWriter, r *http.Request) {
-	rooms := make([]Room, 2)
-	rooms[0] = Room{1, "Розница"}
-	rooms[1] = Room{2, "Парки"}
+// отдет страницу аутентификации
+func authentificationPage(w http.ResponseWriter, r *http.Request) {
+	data, err := os.ReadFile("./http/adm/auth.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+	}
 
+	w.Write(data)
+}
+
+// отдает список комнат от базы данных, json
+func (srv *ServerHTTP) getRoomsList(w http.ResponseWriter, r *http.Request) {
+	res, err := srv.dbConn.Rooms().GetAll(context.Background())
+	if err != nil {
+		log.Println(err)
+	}
+	rooms := make([]Room, len(res))
+
+	for i, droom := range res {
+		rooms[i] = Room{Id: uint64(droom.ID), Title: droom.Title}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(rooms)
 }
 
 // отдает содержимое комнаты json
-func getRoom(w http.ResponseWriter, r *http.Request) {
+func getRoomData(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "1" {
 		slots1 := make([]Slot, 1)
@@ -52,15 +68,7 @@ func getRoom(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func authentificationPage(w http.ResponseWriter, r *http.Request) {
-	data, err := os.ReadFile("./http/adm/auth.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-	}
-
-	w.Write(data)
-}
-
+// проверяет аутентифицирует и авторизует
 func (srv *ServerHTTP) setAuth(w http.ResponseWriter, r *http.Request) {
 	type Credentials struct {
 		login, passwd string
