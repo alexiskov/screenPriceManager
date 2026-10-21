@@ -44,7 +44,9 @@ func (sl SlotsData) GetByID(ctx context.Context, sid uint) (Slot, error) {
 
 // обновляет ссылку на изображение слота
 func (sl SlotsData) UpdateImage(ctx context.Context, slot *Slot) (int, error) {
-	return gorm.G[Slot](sl.DB).Where("id=?", slot.ID).Update(ctx, "image_path", slot.ImagePath)
+	return gorm.G[Slot](sl.DB).
+		Where("id = ?", slot.ID).
+		Update(ctx, "image_path", slot.ImagePath)
 }
 
 // удаляет слот из базы

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"priceManager/database"
+	"priceManager/storage"
 	"time"
 )
 
@@ -22,6 +23,7 @@ func New(db *database.Storage, port string) *ServerHTTP {
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       120 * time.Second,
 		},
+		storage: storage.New("uploads"),
 	}
 
 	srv.registerProtectedAdminRoutes()
@@ -30,10 +32,21 @@ func New(db *database.Storage, port string) *ServerHTTP {
 	return srv
 }
 
+// Run запускает сервер по HTTPS, автоматически создавая папку и сертификаты.
 func (srv *ServerHTTP) Run(rootEmail, rootPassword string) error {
 	if err := srv.dbConn.Users().SetAsRoot(context.Background(), rootEmail, rootPassword); err != nil {
 		return fmt.Errorf("http server run preparing error: %w", err)
 	}
+
+	// Подготавливаем сертификаты (папка certs/ и файлы cert.pem/key.pem)
+	certPath, keyPath, err := EnsureCertificates()
+	if err != nil {
+		return fmt.Errorf("certificates error: %w", err)
+	}
+
 	fmt.Printf("server started with root credentials from config file - config.yaml\n rootEmail: %s\n rootPassword: %s\nIf you will this credentials change - update config.yaml please\n", rootEmail, rootPassword)
-	return srv.server.ListenAndServe()
+	fmt.Printf("🚀 Server running on https://localhost%s\n", srv.server.Addr)
+
+	// Запускаем HTTPS
+	return srv.server.ListenAndServeTLS(certPath, keyPath)
 }

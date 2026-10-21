@@ -8,10 +8,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"priceManager/database"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // регистрация маршрутов группы protect
@@ -122,15 +122,27 @@ func (srv *ServerHTTP) deleteRoom(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "id parsing error", http.StatusInternalServerError)
+		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
 
+	// 1. Удаляем комнату и её слоты из БД (ваш метод RoomsData.Delete)
 	if _, err := srv.dbConn.Rooms().Delete(context.Background(), uint(id)); err != nil {
 		log.Println(err)
 		http.Error(w, "room deleting error", http.StatusInternalServerError)
 		return
 	}
+
+	// 2. Удаляем папку со всеми картинками этой комнаты
+	// (Метод DeleteRoomDir мы добавили в пакет storage на предыдущем шаге)
+	if err := srv.storage.DeleteRoomDir(uint(id)); err != nil {
+		// Если удалить папку не удалось, БД уже очищена, поэтому не возвращаем 500.
+		// Просто логируем, чтобы можно было почистить вручную.
+		log.Printf("warning: failed to delete dir for room %d: %v", id, err)
+	}
+
+	// 3. Отвечаем фронтенду, что всё ок
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // хандлер
@@ -141,67 +153,96 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 	// 1. Ограничение всего тела запроса
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload+1<<20)
 
-	// 2. Парсим multipart, много в память не тянем
+	// 2. Парсим multipart
 	if err := r.ParseMultipartForm(maxUpload); err != nil {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "bad id"})
+		http.Error(w, "bad form data", http.StatusBadRequest)
 		return
 	}
 
 	// 3. Проверяем, что файл один
 	if r.MultipartForm != nil && len(r.MultipartForm.File["image"]) > 1 {
-		http.Error(w, "можно загрузить только один файл", 400)
+		http.Error(w, "можно загрузить только один файл", http.StatusBadRequest)
 		return
 	}
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
-		http.Error(w, "нет поля 'image' с файлом", 400)
+		http.Error(w, "нет поля 'image' с файлом", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
-	// 4. Проверяем размер ещё раз (после парсинга header.Size известен)
+	// 4. Проверяем размер ещё раз
 	if header.Size > maxUpload {
-		http.Error(w, "файл больше 10 МБ", 400)
+		http.Error(w, "файл больше 10 МБ", http.StatusBadRequest)
 		return
 	}
 
 	// 5. Проверяем реальный тип по magic bytes
 	head := make([]byte, 512)
 	n, _ := file.Read(head)
-	file.Seek(0, io.SeekStart) // вернуть указатель в начало
+	file.Seek(0, io.SeekStart)
 	mime := http.DetectContentType(head[:n])
 	if !strings.HasPrefix(mime, "image/") {
-		http.Error(w, "не изображение", 400)
+		http.Error(w, "не изображение", http.StatusBadRequest)
 		return
 	}
 
 	slotID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.Error(w, "id is not number", 500)
-		log.Println(fmt.Errorf("id number parsing error: %w", err))
+		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
 
 	slot, err := srv.dbConn.Slots().GetByID(context.Background(), uint(slotID))
 	if err != nil {
-		log.Println(fmt.Errorf("slot image updating: slot data getting error::%w", err))
+		http.Error(w, "slot not found", http.StatusNotFound)
 		return
 	}
 
-	// 6. Сохраняем
-	slot.ImagePath = filepath.Join("papkaDLyaIMG", strconv.FormatUint(uint64(slot.ID), 10))
+	// Генерируем уникальное имя
+	fileName := fmt.Sprintf("img_%d_%d.jpg", slot.ID, time.Now().UnixNano())
 
-	_, err = srv.dbConn.Slots().UpdateImage(context.Background(), &slot)
+	// Сохраняем поток байт на диск
+	savedPath, err := srv.storage.SaveBlob(slot.RoomID, fileName, file)
 	if err != nil {
-		err = fmt.Errorf("cannot save slot image in db: %w", err)
-		log.Println(err)
+		log.Println("save file error:", err)
+		http.Error(w, "cannot save file", http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Printf("%+v\n", slot)
+	// Обновляем БД
+	oldPath := slot.ImagePath
+	slot.ImagePath = savedPath // например, "uploads/1/img_1_123.jpg"
+
+	// ВОТ ЗДЕСЬ ПРОВЕРЯЕМ РЕЗУЛЬТАТ
+	rowsAffected, err := srv.dbConn.Slots().UpdateImage(context.Background(), &slot)
+	if err != nil {
+		_ = srv.storage.DeleteBlob(savedPath) // откат
+		log.Println("db update error:", err)
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		_ = srv.storage.DeleteBlob(savedPath) // откат
+		log.Println("db update error: rows affected = 0 (slot not found?)")
+		http.Error(w, "slot not updated", http.StatusInternalServerError)
+		return
+	}
+
+	// Удаляем старую картинку, если она была
+	if oldPath != "" {
+		_ = srv.storage.DeleteBlob(oldPath)
+	}
+
+	// ОТПРАВЛЯЕМ ОТВЕТ ФРОНТЕНДУ
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":        slot.ID,
+		"image_url": fmt.Sprintf("/api/slots/%d/image", slot.ID), // Виртуальный URL
+	})
 }
 
 // добавляет слот в комнату
@@ -229,13 +270,35 @@ func (srv *ServerHTTP) deleteSlot(w http.ResponseWriter, r *http.Request) {
 	slotID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "solt id parsing error", http.StatusInternalServerError)
+		http.Error(w, "slot id parsing error", http.StatusBadRequest)
 		return
 	}
-
-	if _, err := srv.dbConn.Slots().Delete(context.Background(), uint(slotID)); err != nil {
+	slotMGR := srv.dbConn.Slots()
+	slot, err := slotMGR.GetByID(context.Background(), uint(slotID))
+	if err != nil {
 		log.Println(err)
 		http.Error(w, "slot deleting error", http.StatusInternalServerError)
 		return
 	}
+	if err := srv.storage.DeleteBlob(slot.ImagePath); err != nil {
+		log.Println(err)
+		http.Error(w, "image slot deleting error", http.StatusInternalServerError)
+		return
+	}
+
+	if rows, err := slotMGR.Delete(context.Background(), uint(slotID)); err != nil {
+		log.Println(err)
+		http.Error(w, "slot deleting error", http.StatusInternalServerError)
+		return
+	} else {
+		// Если rows == 0, значит запись уже кто-то удалил параллельно (гонка)
+		// Это не ошибка для клиента, просто выходим с 204.
+		if rows == 0 {
+			log.Printf("deleteSlot: slot %d already deleted", slotID)
+		}
+
+		// 5. Возвращаем 204 No Content (успех, тела нет)
+		w.WriteHeader(http.StatusNoContent)
+	}
+
 }

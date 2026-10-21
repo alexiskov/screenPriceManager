@@ -3,13 +3,15 @@ package srv
 import (
 	"net/http"
 	"priceManager/database"
+	"priceManager/storage"
 )
 
 type (
 	ServerHTTP struct {
-		server *http.Server
-		mux    *http.ServeMux
-		dbConn *database.Storage
+		server  *http.Server
+		mux     *http.ServeMux
+		dbConn  *database.Storage
+		storage *storage.Storage
 	}
 
 	Room struct {

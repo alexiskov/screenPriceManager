@@ -829,6 +829,9 @@
       const roomCancelBtn = document.getElementById('roomCancelBtn');
       const roomSaveBtn = document.getElementById('roomSaveBtn');
 
+      // Хранилище Blob-ссылок для очистки памяти
+      let blobUrls = {};
+
       function toast(message, type = 'info') {
         const el = document.createElement('div');
         el.className = `toast ${type}`;
@@ -1109,8 +1112,14 @@
         slotCountSpan.textContent = '—';
       }
 
+      function clearBlobUrls() {
+        Object.values(blobUrls).forEach(url => URL.revokeObjectURL(url));
+        blobUrls = {};
+      }
+
       function renderGallery() {
         galleryGrid.innerHTML = '';
+        clearBlobUrls();
 
         if (currentSlots.length === 0) {
           const emptyDiv = document.createElement('div');
@@ -1138,15 +1147,38 @@
           imageArea.className = 'slot-image-area';
 
           if (slot.image_url) {
-            const img = document.createElement('img');
-            img.src = slot.image_url;
-            img.alt = `Изображение ${index + 1}`;
-            img.loading = 'lazy';
-            img.onerror = () => {
+            imageArea.appendChild(buildPlaceholder()); // Временная заглушка, пока грузится блоб
+
+            // Если в мок-режиме картинка в виде dataURL, обрабатываем как обычно
+            if (slot.image_url.startsWith('data:')) {
               imageArea.innerHTML = '';
-              imageArea.appendChild(buildPlaceholder());
-            };
-            imageArea.appendChild(img);
+              const img = document.createElement('img');
+              img.src = slot.image_url;
+              img.alt = `Изображение ${index + 1}`;
+              imageArea.appendChild(img);
+            } else {
+              // В реальном режиме качаем как Blob
+              fetch(slot.image_url, { credentials: 'same-origin' })
+                .then(res => {
+                  if (!res.ok) throw new Error('Bad response');
+                  return res.blob();
+                })
+                .then(blob => {
+                  const objectUrl = URL.createObjectURL(blob);
+                  blobUrls[slot.id] = objectUrl;
+
+                  const img = document.createElement('img');
+                  img.src = objectUrl;
+                  img.alt = `Изображение ${index + 1}`;
+
+                  imageArea.innerHTML = '';
+                  imageArea.appendChild(img);
+                })
+                .catch(err => {
+                  console.error('Ошибка загрузки блоба:', err);
+                  // Оставляем заглушку
+                });
+            }
           } else {
             imageArea.appendChild(buildPlaceholder());
           }
@@ -1259,6 +1291,7 @@
 
           const idx = currentSlots.findIndex(s => String(s.id) === String(slotId));
           if (idx !== -1) {
+            // Сервер вернул обновленный image_url
             currentSlots[idx] = { ...currentSlots[idx], ...updated };
           }
           renderGallery();
