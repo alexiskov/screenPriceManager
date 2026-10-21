@@ -13,12 +13,12 @@ type (
 	}
 
 	Room struct {
-		Id    uint64 `json:"id"`
+		Id    uint   `json:"id"`
 		Title string `json:"title"`
 	}
 
 	Slot struct {
-		Id        int    `json:"id"`
+		Id        uint   `json:"id"`
 		ImageUrl  string `json:"image_url"`
 		SortOrder int    `json:"sort_order"`
 	}

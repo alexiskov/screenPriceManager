@@ -7,14 +7,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
+// регистрирует публичные маршруты
 func (srv *ServerHTTP) registerPublicRoutes() {
 	srv.mux.HandleFunc(" /", mainPage)
 	srv.mux.HandleFunc(" /auth", authentificationPage)
 	srv.mux.HandleFunc("GET /api/rooms", srv.getRoomsList)
-	srv.mux.HandleFunc("GET /api/rooms/{id}", getRoomData)
+	srv.mux.HandleFunc("GET /api/rooms/{id}", srv.getRoomData)
 	srv.mux.HandleFunc("POST /auth/check", srv.setAuth)
 }
 
@@ -49,23 +51,43 @@ func (srv *ServerHTTP) getRoomsList(w http.ResponseWriter, r *http.Request) {
 	rooms := make([]Room, len(res))
 
 	for i, droom := range res {
-		rooms[i] = Room{Id: uint64(droom.ID), Title: droom.Title}
+		rooms[i] = Room{Id: droom.ID, Title: droom.Title}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(rooms)
 }
 
 // отдает содержимое комнаты json
-func getRoomData(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if id == "1" {
-		slots1 := make([]Slot, 1)
-		slots1[0] = Slot{Id: 1, ImageUrl: "", SortOrder: 1}
-		slots := SlotResponse{Id: 1, Title: "Розница", Slots: slots1}
-
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		json.NewEncoder(w).Encode(slots)
+func (srv *ServerHTTP) getRoomData(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "room id parsing error", http.StatusInternalServerError)
+		return
 	}
+	room, err := srv.dbConn.Rooms().GetByID(context.Background(), uint(id))
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "no room with this id", http.StatusInternalServerError)
+		return
+	}
+
+	slotsData, err := srv.dbConn.Slots().GetByRoom(context.Background(), room.ID)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "no slot data", http.StatusInternalServerError)
+		return
+	}
+	slots := make([]Slot, len(slotsData))
+	for i, s := range slotsData {
+		slots[i] = Slot{Id: s.ID, ImageUrl: s.ImagePath}
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(SlotResponse{Id: uint(id), Title: room.Title, Slots: slots}); err != nil {
+		log.Println(err)
+	}
+
 }
 
 // проверяет аутентифицирует и авторизует

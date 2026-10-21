@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type (
@@ -14,7 +15,9 @@ type (
 )
 
 func Init() (*Storage, error) {
-	db, err := gorm.Open(sqlite.Open("base.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("base.db"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("database connection error: %w", err)
 	}
