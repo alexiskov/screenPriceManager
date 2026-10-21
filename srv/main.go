@@ -39,7 +39,7 @@ func (srv *ServerHTTP) Run(rootEmail, rootPassword string) error {
 	}
 
 	// Подготавливаем сертификаты (папка certs/ и файлы cert.pem/key.pem)
-	certPath, keyPath, err := EnsureCertificates()
+	certPath, keyPath, err := ensureCertificates()
 	if err != nil {
 		return fmt.Errorf("certificates error: %w", err)
 	}
