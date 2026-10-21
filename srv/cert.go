@@ -23,7 +23,7 @@ const (
 // EnsureCertificates проверяет наличие папки и сертификатов.
 // Если папки нет — создает. Если сертификатов нет — генерирует самоподписанные.
 // Возвращает пути к файлам.
-func ensureCertificates() (string, string, error) {
+func ensureCertificates(ip, organization, dnsn string) (string, string, error) {
 	// 1. Создаем папку certs, если её нет
 	if err := os.MkdirAll(CertDir, 0755); err != nil {
 		return "", "", fmt.Errorf("failed to create certs directory: %w", err)
@@ -42,14 +42,27 @@ func ensureCertificates() (string, string, error) {
 
 	// 3. Генерируем самоподписанный сертификат
 	fmt.Println("⚠️  Certificates not found. Generating self-signed for localhost...")
-	if err := generateSelfSigned(certPath, keyPath); err != nil {
+	if err := generateSelfSigned(certPath, keyPath, ip, organization, dnsn); err != nil {
 		return "", "", err
 	}
 
 	return certPath, keyPath, nil
 }
 
-func generateSelfSigned(certPath, keyPath string) error {
+func generateSelfSigned(certPath, keyPath, ip, organization, dnsn string) error {
+	if certPath == keyPath {
+		return fmt.Errorf("certPath and keyPath must differ")
+	}
+
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return fmt.Errorf("invalid IP address: %q", ip)
+	}
+
+	if organization == "" {
+		organization = "Local Dev Server"
+	}
+
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return fmt.Errorf("failed to generate private key: %w", err)
@@ -64,19 +77,27 @@ func generateSelfSigned(certPath, keyPath string) error {
 		return fmt.Errorf("failed to generate serial number: %w", err)
 	}
 
+	dnsNames := []string{}
+	if dnsn != "" {
+		dnsNames = append(dnsNames, dnsn)
+	}
+
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"Local Dev Server"},
+			Organization: []string{organization},
 		},
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
 
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		DNSNames:              []string{"localhost"},
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+		IsCA:                  true,
+		KeyUsage: x509.KeyUsageKeyEncipherment |
+			x509.KeyUsageDigitalSignature |
+			x509.KeyUsageCertSign,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:    dnsNames,
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1"), parsedIP},
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)

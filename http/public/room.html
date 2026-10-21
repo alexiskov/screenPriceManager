@@ -1,3 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Галерея точки</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(145deg, #f5f7fa 0%, #e9edf2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem 3rem;
+      color: #0a1e2c;
+    }
+
+    .page-panel {
+      width: 100%;
+      max-width: 1300px;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      padding: 2.5rem 2rem;
+      border-radius: 2rem;
+      box-shadow: 0 20px 40px -12px rgba(0, 20, 30, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+    }
+
+    .header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.25rem; }
+    .page-title { font-size: 2rem; font-weight: 600; }
+    .back-btn {
+      text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 50%; background: #eef2ff; color: #1e3a8a;
+      font-weight: bold; border: 1px solid #c7d2fe; transition: 0.2s;
+    }
+    .back-btn:hover { background: #dbeafe; }
+
+    .page-subtitle { font-size: 0.95rem; color: #4b5e6b; margin-bottom: 2rem; padding-bottom: 1.2rem; border-bottom: 1px solid rgba(0,0,0,0.05); }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1.5rem;
+      min-height: 200px;
+    }
+
+    .tile {
+      aspect-ratio: 1 / 1;
+      border-radius: 1.5rem;
+      overflow: hidden;
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+      position: relative;
+    }
+    .tile:hover {
+      transform: translateY(-3px) scale(1.01);
+      box-shadow: 0 16px 28px -14px rgba(37, 99, 235, 0.4);
+      border-color: #2563eb;
+    }
+    .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .empty-state, .loading-state, .error-state {
+      grid-column: 1 / -1; text-align: center; padding: 3.5rem 2rem;
+      background: rgba(248, 250, 252, 0.7); border-radius: 2rem; border: 2px dashed #d1d9e6; color: #64748b;
+    }
+    .error-state { background: rgba(254, 242, 242, 0.7); border-color: #fecaca; color: #991b1b; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ============================================================
+       Fullscreen Slideshow (скрытый контейнер)
+       ============================================================ */
+    .fs-backdrop {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      cursor: pointer;
+    }
+    .fs-backdrop.open { display: flex; }
+
+    .fs-image {
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      display: block;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { background: linear-gradient(145deg, #101c26 0%, #0b141c 100%); color: #eef4f8; }
+      .page-panel { background: rgba(20, 32, 40, 0.9); border-color: rgba(255, 255, 255, 0.08); }
+      .page-title { color: #e5edf5; }
+      .back-btn { background: rgba(59, 130, 246, 0.15); border-color: transparent; color: #93c5fd; }
+      .page-subtitle { color: #9bb1c2; border-bottom-color: rgba(255, 255, 255, 0.08); }
+      .tile { background: #142430; border-color: #2e4554; }
+      .tile:hover { border-color: #3b82f6; }
+      .empty-state, .loading-state { background: rgba(20, 32, 40, 0.6); border-color: #2e4554; color: #9bb1c2; }
+      .error-state { background: rgba(127, 29, 29, 0.2); border-color: rgba(220, 38, 38, 0.3); color: #fca5a5; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-panel">
+    <div class="header">
+      <a href="/" class="back-btn" title="Назад">←</a>
+      <h1 class="page-title" id="roomTitle">Загрузка...</h1>
+    </div>
+    <p class="page-subtitle">Нажмите на витрину, чтобы открыть на весь экран</p>
+
+    <div class="gallery-grid" id="galleryGrid">
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <p>Загрузка витрин…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Контейнер для полноэкранного режима -->
+  <div class="fs-backdrop" id="fsBackdrop">
+    <img class="fs-image" id="fsImage" alt="">
+  </div>
+
   <script>
     (function () {
       const AUTO_ADVANCE_MS = 10_000; // 10 секунд
@@ -100,7 +233,6 @@
                 .catch(err => console.error('Blob fetch error:', err));
             }
 
-            // Передаем Event (e) в функцию
             tile.addEventListener('click', (e) => openFullscreen(index, e));
             galleryGrid.appendChild(tile);
           });
@@ -122,14 +254,13 @@
         startSlideTimer();
 
         // Запрос на нативный Fullscreen (как F11)
-        // Вызывается только по клику пользователя
         if (fsBackdrop.requestFullscreen) {
           fsBackdrop.requestFullscreen().catch(err => {
             console.warn(`Fullscreen error: ${err.message}`);
           });
-        } else if (fsBackdrop.webkitRequestFullscreen) { /* Safari */
+        } else if (fsBackdrop.webkitRequestFullscreen) {
           fsBackdrop.webkitRequestFullscreen();
-        } else if (fsBackdrop.msRequestFullscreen) { /* IE11 */
+        } else if (fsBackdrop.msRequestFullscreen) {
           fsBackdrop.msRequestFullscreen();
         }
       }
@@ -184,16 +315,12 @@
 
       // --- События ---
 
-      // Клик по картинке в фулскрине — выход
       fsBackdrop.addEventListener('click', () => {
         closeFullscreen();
       });
 
-      // Если пользователь нажал Esc (выход из Fullscreen API),
-      // нужно синхронизировать состояние и убрать черный фон
       document.addEventListener('fullscreenchange', () => {
         if (!document.fullscreenElement) {
-          // Если фулскрин закрыт, скрываем наш backdrop
           fsBackdrop.classList.remove('open');
           stopSlideTimer();
         }
@@ -203,3 +330,5 @@
       loadData();
     })();
   </script>
+</body>
+</html>

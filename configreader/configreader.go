@@ -12,12 +12,15 @@ import (
 
 type (
 	ConfigEntity struct {
-		HTTP ServerHttp
-		Root RootUser
+		CompanyName string
+		HTTP        ServerHttp
+		Root        RootUser
 	}
 
 	ServerHttp struct {
-		Port string
+		Port       string
+		ServerIP   string
+		ServerDNSN string
 	}
 
 	RootUser struct {

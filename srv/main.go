@@ -33,13 +33,13 @@ func New(db *database.Storage, port string) *ServerHTTP {
 }
 
 // Run запускает сервер по HTTPS, автоматически создавая папку и сертификаты.
-func (srv *ServerHTTP) Run(rootEmail, rootPassword string) error {
+func (srv *ServerHTTP) Run(rootEmail, rootPassword, ip, organization, dnsn string) error {
 	if err := srv.dbConn.Users().SetAsRoot(context.Background(), rootEmail, rootPassword); err != nil {
 		return fmt.Errorf("http server run preparing error: %w", err)
 	}
 
 	// Подготавливаем сертификаты (папка certs/ и файлы cert.pem/key.pem)
-	certPath, keyPath, err := ensureCertificates()
+	certPath, keyPath, err := ensureCertificates(ip, organization, dnsn)
 	if err != nil {
 		return fmt.Errorf("certificates error: %w", err)
 	}
