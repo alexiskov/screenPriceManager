@@ -2,3 +2,6 @@
 *.db
 #MyConfig
 config.yaml
+#ssl
+*.crt
+*.key
