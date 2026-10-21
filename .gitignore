@@ -1,0 +1,4 @@
+#Database
+*.db
+#MyConfig
+config.yaml
