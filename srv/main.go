@@ -45,7 +45,7 @@ func (srv *ServerHTTP) Run(rootEmail, rootPassword, ip, organization, dnsn strin
 	}
 
 	fmt.Printf("server started with root credentials from config file - config.yaml\n rootEmail: %s\n rootPassword: %s\nIf you will this credentials change - update config.yaml please\n", rootEmail, rootPassword)
-	fmt.Printf("🚀 Server running on https://localhost%s\n", srv.server.Addr)
+	fmt.Printf("🚀 Server running on https://%s:%s\n", dnsn, srv.server.Addr)
 
 	// Запускаем HTTPS
 	return srv.server.ListenAndServeTLS(certPath, keyPath)
