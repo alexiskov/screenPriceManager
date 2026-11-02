@@ -5,3 +5,5 @@ config.yaml
 #ssl
 *.crt
 *.key
+#uploadedImages
+/uploads/
