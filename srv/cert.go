@@ -35,13 +35,13 @@ func ensureCertificates(ip, organization, dnsn string) (string, string, error) {
 	// 2. Если оба файла уже существуют — используем их
 	if _, err := os.Stat(certPath); err == nil {
 		if _, err := os.Stat(keyPath); err == nil {
-			fmt.Println("🔒 Found existing certificates in", CertDir)
+
 			return certPath, keyPath, nil
 		}
 	}
 
 	// 3. Генерируем самоподписанный сертификат
-	fmt.Println("⚠️  Certificates not found. Generating self-signed for localhost...")
+
 	if err := generateSelfSigned(certPath, keyPath, ip, organization, dnsn); err != nil {
 		return "", "", err
 	}

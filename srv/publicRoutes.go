@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -170,7 +169,7 @@ func (srv *ServerHTTP) setAuth(w http.ResponseWriter, r *http.Request) {
 	usr.AuthHash = "osfr"
 
 	if err := userMGR.UpdateUser(context.Background(), usr); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Redirect(w, r, "/auth", http.StatusTemporaryRedirect)
 		return
 	}
