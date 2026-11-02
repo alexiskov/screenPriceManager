@@ -3,6 +3,7 @@ package srv
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"priceManager/database"
 	"priceManager/storage"
@@ -41,7 +42,8 @@ func (srv *ServerHTTP) Run(rootEmail, rootPassword, ip, organization, dnsn strin
 	// Подготавливаем сертификаты (папка certs/ и файлы cert.pem/key.pem)
 	certPath, keyPath, err := ensureCertificates(ip, organization, dnsn)
 	if err != nil {
-		return fmt.Errorf("certificates error: %w", err)
+		log.Println(fmt.Errorf("certificates error: %w", err))
+		return nil
 	}
 
 	fmt.Printf("server started with root credentials from config file - config.yaml\n rootEmail: %s\n rootPassword: %s\nIf you will this credentials change - update config.yaml please\n", rootEmail, rootPassword)
