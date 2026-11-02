@@ -28,5 +28,5 @@ func main() {
 	if err != nil {
 		log.Println()
 	}
-	log.Println(srv.New(db, cfg.HTTP.Port).Run(cfg.Root.Email, cfg.Root.Password, cfg.HTTP.ServerIP, cfg.CompanyName, cfg.HTTP.ServerDNSN))
+	srv.New(db, cfg.HTTP.Port).Run(cfg.Root.Email, cfg.Root.Password, cfg.HTTP.ServerIP, cfg.CompanyName, cfg.HTTP.ServerDNSN)
 }

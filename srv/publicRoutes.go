@@ -13,7 +13,7 @@ import (
 
 // регистрирует публичные маршруты
 func (srv *ServerHTTP) registerPublicRoutes() {
-	srv.mux.HandleFunc(" /", mainPage)
+	srv.mux.HandleFunc(" /", srv.mainPage)
 	srv.mux.HandleFunc(" /auth", authentificationPage)
 	srv.mux.HandleFunc("GET /api/rooms", srv.getRoomsList)
 	srv.mux.HandleFunc("GET /api/rooms/{id}", srv.getRoomData)
@@ -23,10 +23,11 @@ func (srv *ServerHTTP) registerPublicRoutes() {
 }
 
 // отдает главную страницу
-func mainPage(w http.ResponseWriter, r *http.Request) {
+func (srv *ServerHTTP) mainPage(w http.ResponseWriter, r *http.Request) {
 	data, err := os.ReadFile("./http/public/main.html")
 	if err != nil {
 		err = fmt.Errorf("public/main.html opening error: %w", err)
+		srv.logger.Println(err)
 		http.Error(w, "no content", http.StatusNotFound)
 		return
 	}
@@ -48,7 +49,7 @@ func authentificationPage(w http.ResponseWriter, r *http.Request) {
 func (srv *ServerHTTP) getRoomsList(w http.ResponseWriter, r *http.Request) {
 	res, err := srv.dbConn.Rooms().GetAll(context.Background())
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 	}
 	rooms := make([]Room, len(res))
 
@@ -73,20 +74,20 @@ func getRoomPage(w http.ResponseWriter, r *http.Request) {
 func (srv *ServerHTTP) getRoomData(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room id parsing error", http.StatusInternalServerError)
 		return
 	}
 	room, err := srv.dbConn.Rooms().GetByID(context.Background(), uint(id))
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "no room with this id", http.StatusInternalServerError)
 		return
 	}
 
 	slotsData, err := srv.dbConn.Slots().GetByRoom(context.Background(), room.ID)
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "no slot data", http.StatusInternalServerError)
 		return
 	}
@@ -106,7 +107,7 @@ func (srv *ServerHTTP) getRoomData(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(SlotResponse{Id: uint(id), Title: room.Title, Slots: slots}); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 	}
 
 }
@@ -137,7 +138,7 @@ func (srv *ServerHTTP) getSlotImage(w http.ResponseWriter, r *http.Request) {
 	// (предполагается, что у вас в storage есть метод ReadBlob, как мы обсуждали ранее)
 	imgBytes, err := srv.storage.ReadBlob(slot.ImagePath)
 	if err != nil {
-		log.Println("error reading file:", err)
+		srv.logger.Println("error reading file:", err)
 		http.Error(w, "file error", http.StatusInternalServerError)
 		return
 	}

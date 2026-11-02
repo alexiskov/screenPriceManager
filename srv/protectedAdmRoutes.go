@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"priceManager/database"
@@ -60,7 +59,7 @@ func showAdminWorkspace(w http.ResponseWriter, r *http.Request) {
 func (srv *ServerHTTP) addRoom(w http.ResponseWriter, r *http.Request) {
 	newRoom := Room{}
 	if err := json.NewDecoder(r.Body).Decode(&newRoom); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room appending error", http.StatusInternalServerError)
 		return
 	}
@@ -68,7 +67,7 @@ func (srv *ServerHTTP) addRoom(w http.ResponseWriter, r *http.Request) {
 	dataRoom := database.Room{Title: newRoom.Title}
 
 	if err := srv.dbConn.Rooms().Add(context.Background(), &dataRoom); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room creating error", http.StatusInternalServerError)
 		return
 	}
@@ -78,7 +77,7 @@ func (srv *ServerHTTP) addRoom(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(newRoom); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "new room data response sent error", http.StatusInternalServerError)
 		return
 	}
@@ -88,7 +87,7 @@ func (srv *ServerHTTP) addRoom(w http.ResponseWriter, r *http.Request) {
 func (srv *ServerHTTP) renameRoom(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "target room id parsing error", http.StatusInternalServerError)
 		return
 	}
@@ -96,7 +95,7 @@ func (srv *ServerHTTP) renameRoom(w http.ResponseWriter, r *http.Request) {
 	room := database.Room{}
 
 	if err := json.NewDecoder(r.Body).Decode(&room); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room title parsing error", http.StatusInternalServerError)
 		return
 	}
@@ -104,14 +103,14 @@ func (srv *ServerHTTP) renameRoom(w http.ResponseWriter, r *http.Request) {
 	room.ID = uint(id)
 
 	if err := srv.dbConn.Rooms().Rename(context.Background(), &room); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room updating error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(Room{Id: room.ID, Title: room.Title}); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room data encoding error", http.StatusInternalServerError)
 		return
 	}
@@ -121,14 +120,14 @@ func (srv *ServerHTTP) renameRoom(w http.ResponseWriter, r *http.Request) {
 func (srv *ServerHTTP) deleteRoom(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
 
 	// 1. Удаляем комнату и её слоты из БД (ваш метод RoomsData.Delete)
 	if _, err := srv.dbConn.Rooms().Delete(context.Background(), uint(id)); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room deleting error", http.StatusInternalServerError)
 		return
 	}
@@ -138,7 +137,7 @@ func (srv *ServerHTTP) deleteRoom(w http.ResponseWriter, r *http.Request) {
 	if err := srv.storage.DeleteRoomDir(uint(id)); err != nil {
 		// Если удалить папку не удалось, БД уже очищена, поэтому не возвращаем 500.
 		// Просто логируем, чтобы можно было почистить вручную.
-		log.Printf("warning: failed to delete dir for room %d: %v", id, err)
+		srv.logger.Printf("warning: failed to delete dir for room %d: %v", id, err)
 	}
 
 	// 3. Отвечаем фронтенду, что всё ок
@@ -155,6 +154,7 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Парсим multipart
 	if err := r.ParseMultipartForm(maxUpload); err != nil {
+		srv.logger.Println(fmt.Errorf("from address %s, error:%w", r.RemoteAddr, err))
 		http.Error(w, "bad form data", http.StatusBadRequest)
 		return
 	}
@@ -167,6 +167,7 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
+		srv.logger.Println(fmt.Errorf("from address %s, error:%w", r.RemoteAddr, err))
 		http.Error(w, "нет поля 'image' с файлом", http.StatusBadRequest)
 		return
 	}
@@ -190,6 +191,7 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 
 	slotID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		srv.logger.Println(fmt.Errorf("from address %s, slorID parsing error:%w", r.RemoteAddr, err))
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
@@ -206,7 +208,7 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 	// Сохраняем поток байт на диск
 	savedPath, err := srv.storage.SaveBlob(slot.RoomID, fileName, file)
 	if err != nil {
-		log.Println("save file error:", err)
+		srv.logger.Println("save file error:", err)
 		http.Error(w, "cannot save file", http.StatusInternalServerError)
 		return
 	}
@@ -219,14 +221,14 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 	rowsAffected, err := srv.dbConn.Slots().UpdateImage(context.Background(), &slot)
 	if err != nil {
 		_ = srv.storage.DeleteBlob(savedPath) // откат
-		log.Println("db update error:", err)
+		srv.logger.Println("db update error:", err)
 		http.Error(w, "db error", http.StatusInternalServerError)
 		return
 	}
 
 	if rowsAffected == 0 {
 		_ = srv.storage.DeleteBlob(savedPath) // откат
-		log.Println("db update error: rows affected = 0 (slot not found?)")
+		srv.logger.Println("db update error: rows affected = 0 (slot not found?)")
 		http.Error(w, "slot not updated", http.StatusInternalServerError)
 		return
 	}
@@ -249,13 +251,13 @@ func (srv *ServerHTTP) uploadImage(w http.ResponseWriter, r *http.Request) {
 func (srv *ServerHTTP) addSlot(w http.ResponseWriter, r *http.Request) {
 	roomId, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "room id parsing error", http.StatusInternalServerError)
 		return
 	}
 	slotData := database.Slot{RoomID: uint(roomId)}
 	if err := srv.dbConn.Slots().AddByRoom(context.Background(), &slotData); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "slot creating error", http.StatusInternalServerError)
 		return
 	}
@@ -269,32 +271,32 @@ func (srv *ServerHTTP) addSlot(w http.ResponseWriter, r *http.Request) {
 func (srv *ServerHTTP) deleteSlot(w http.ResponseWriter, r *http.Request) {
 	slotID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "slot id parsing error", http.StatusBadRequest)
 		return
 	}
 	slotMGR := srv.dbConn.Slots()
 	slot, err := slotMGR.GetByID(context.Background(), uint(slotID))
 	if err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "slot deleting error", http.StatusInternalServerError)
 		return
 	}
 	if err := srv.storage.DeleteBlob(slot.ImagePath); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "image slot deleting error", http.StatusInternalServerError)
 		return
 	}
 
 	if rows, err := slotMGR.Delete(context.Background(), uint(slotID)); err != nil {
-		log.Println(err)
+		srv.logger.Println(err)
 		http.Error(w, "slot deleting error", http.StatusInternalServerError)
 		return
 	} else {
 		// Если rows == 0, значит запись уже кто-то удалил параллельно (гонка)
 		// Это не ошибка для клиента, просто выходим с 204.
 		if rows == 0 {
-			log.Printf("deleteSlot: slot %d already deleted", slotID)
+			srv.logger.Printf("deleteSlot: slot %d already deleted", slotID)
 		}
 
 		// 5. Возвращаем 204 No Content (успех, тела нет)

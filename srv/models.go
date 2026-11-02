@@ -1,6 +1,7 @@
 package srv
 
 import (
+	"log"
 	"net/http"
 	"priceManager/database"
 	"priceManager/storage"
@@ -12,6 +13,7 @@ type (
 		mux     *http.ServeMux
 		dbConn  *database.Storage
 		storage *storage.Storage
+		logger  *log.Logger
 	}
 
 	Room struct {
