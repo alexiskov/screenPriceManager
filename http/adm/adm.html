@@ -1513,9 +1513,9 @@
       logoutBtn.addEventListener('click', async () => {
         if (!confirm('Выйти из админки?')) return;
         try {
-          await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
+          await fetch('/adm/exit', { method: 'POST', credentials: 'same-origin' });
         } catch (e) {}
-        window.location.href = '/login';
+        window.location.href = '/auth';
       });
 
       (async function init() {

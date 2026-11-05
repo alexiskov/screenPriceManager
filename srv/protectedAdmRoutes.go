@@ -26,6 +26,7 @@ func (srv *ServerHTTP) registerProtectedAdminRoutes() {
 	protectedAdmRoutes.HandleFunc("POST /adm/api/rooms/{id}/slots", srv.addSlot)
 	protectedAdmRoutes.HandleFunc("DELETE /adm/api/slots/{id}", srv.deleteSlot)
 	protectedAdmRoutes.HandleFunc("POST /adm/api/slots/{id}/image", srv.uploadImage)
+	protectedAdmRoutes.HandleFunc("POST /adm/exit", srv.logout)
 	//start protected handler
 	srv.mux.Handle("/adm/", mv(protectedAdmRoutes))
 }
@@ -303,4 +304,14 @@ func (srv *ServerHTTP) deleteSlot(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 
+}
+
+func (srv *ServerHTTP) logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:    "ssID",
+		Value:   "",
+		MaxAge:  -1,                               // Ключевой параметр: отрицательное значение означает немедленное удаление
+		Expires: time.Now().Add(-100 * time.Hour), // Совместимость со старыми браузерами (например, IE)
+		Path:    "/",                              // Должен совпадать с Path, использованным при установке cookie
+	})
 }
